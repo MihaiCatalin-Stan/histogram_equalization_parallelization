@@ -1,1 +1,9 @@
 *.pgm
+.DS_Store
+histogram
+histogram_debug
+*.dSYM/
+perf.data
+perf.data.old
+slurm-*.out
+vtune_*/
