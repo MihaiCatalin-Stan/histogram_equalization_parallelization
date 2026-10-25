@@ -1,3 +1,7 @@
+#ifdef PROFILE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -7,6 +11,30 @@
 #include <limits.h>
 
 #define GRAY_LEVELS 256
+
+#ifdef PROFILE
+/* Per-step wall-clock timing, enabled with -DPROFILE (make profile). */
+#include <time.h>
+
+enum { P_READ, P_ALLOC, P_HIST, P_CDF, P_MAP, P_APPLY, P_WRITE, P_COUNT };
+
+static double prof_ms[P_COUNT];
+
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+}
+
+#define PROF_DECL(t)      double t = now_ms()
+#define PROF_RESET(t)     ((t) = now_ms())
+#define PROF_LAP(t, id)   do { double n_ = now_ms(); prof_ms[id] = n_ - (t); (t) = n_; } while (0)
+#else
+#define PROF_DECL(t)
+#define PROF_RESET(t)
+#define PROF_LAP(t, id)
+#endif
 
 typedef struct {
     int width;
@@ -27,6 +55,8 @@ void histogram_equalization(
 
     long long int total_pixels = width * height;
 
+    PROF_DECL(t);
+
     output->pixels = malloc(total_pixels * sizeof(uint8_t));
 
     if (!output->pixels) {
@@ -38,10 +68,14 @@ void histogram_equalization(
     output->width = input.width;
     output->max_value = 255;
 
+    PROF_LAP(t, P_ALLOC);
+
     // 1. Calculate the histogram - Fully parallel
     for (int i = 0; i < total_pixels; i++) {
         histogram[input.pixels[i]]++;
     }
+
+    PROF_LAP(t, P_HIST);
 
     // Barrier
 
@@ -61,6 +95,8 @@ void histogram_equalization(
             break;
         }
     }
+
+    PROF_LAP(t, P_CDF);
 
     // 4. Build the intensity mapping
     if (total_pixels == cdf_min) {
@@ -84,12 +120,16 @@ void histogram_equalization(
         mapping[i] = (uint8_t)round(value);
     }
 
+    PROF_LAP(t, P_MAP);
+
     // Barrier, all threads need the mapping done
 
     // 5. Apply the mapping to every pixel - Fully parallel
     for (int i = 0; i < total_pixels; i++) {
         output->pixels[i] = mapping[input.pixels[i]];
     }
+
+    PROF_LAP(t, P_APPLY);
 
     return;
 }
@@ -295,14 +335,19 @@ int main(int argc, char *argv[]) {
 
     GrayImage input, output;
 
+    PROF_DECL(t);
+
     if (!read_pgm(argv[1], &input)) {
         return 1;
     }
+
+    PROF_LAP(t, P_READ);
 
     printf("Read succesfully\n");
 
     histogram_equalization(input, &output, input.width, input.height);
 
+    PROF_RESET(t);
 
     if(!save_pgm(argv[1], &output)) {
         printf("Failed to save image to file\n");
@@ -310,6 +355,16 @@ int main(int argc, char *argv[]) {
         free(output.pixels);
         return 1;
     }
+
+    PROF_LAP(t, P_WRITE);
+
+#ifdef PROFILE
+    /* One machine-readable line (ms) for the benchmark script. */
+    fprintf(stderr, "PROFILE %d %d", input.width, input.height);
+    for (int i = 0; i < P_COUNT; i++)
+        fprintf(stderr, " %.6f", prof_ms[i]);
+    fputc('\n', stderr);
+#endif
 
     return 0;
 }

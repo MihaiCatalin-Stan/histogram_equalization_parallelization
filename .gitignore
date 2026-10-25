@@ -2,6 +2,7 @@
 .DS_Store
 histogram
 histogram_debug
+histogram_profile
 *.dSYM/
 perf.data
 perf.data.old
