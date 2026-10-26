@@ -5,7 +5,7 @@ rows = [l.split()[1:] for l in open(sys.argv[3])]
 w, h = rows[0][0], rows[0][1]
 cols = list(zip(*[[float(x) for x in r[2:]] for r in rows]))
 labels = ["read", "alloc output", "1 histogram", "2+3 cdf/cdf_min",
-          "4 mapping", "5 apply mapping", "write (P2)"]
+          "4 mapping", "5 apply mapping", "write"]
 med = [statistics.median(c) for c in cols]
 mn = [min(c) for c in cols]
 total = sum(med)

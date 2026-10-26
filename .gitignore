@@ -8,3 +8,5 @@ perf.data
 perf.data.old
 slurm-*.out
 vtune_*/
+histogram_optimized
+histogram_optimized_profile
